@@ -135,15 +135,39 @@ class Render:
         args = ["ffmpeg", opt, "-hide_banner", "-loglevel", "error", "-i", f_in, "-f", "f32le", "-ar", str(sample_rate), "-ac", "1", f2]
         print(" ".join(args))
         fut1 = exc.submit(psutil.Popen, args, stderr=subprocess.PIPE)
+        opt = "-n"
+        if os.path.exists(f3):
+            if is_url(source) or os.path.getmtime(f2) < max(os.path.getctime(source), os.path.getmtime(source)):
+                opt = "-y"
+        args = ["ffmpeg", opt, "-hide_banner", "-loglevel", "error", "-i", f_in, f3]
+        print(" ".join(args))
+        proc = psutil.Popen(args, stderr=subprocess.PIPE)
+        try:
+            fl = os.path.getsize(f3)
+        except FileNotFoundError:
+            fl = 0
+        while fl < res_scale << 6:
+            if not proc.is_running():
+                err = proc.stderr.read().decode("utf-8", "replace")
+                if err:
+                    ex = RuntimeError(err)
+                else:
+                    ex = RuntimeError("FFmpeg did not start correctly, or file was too small.")
+                raise ex
+            time.sleep(0.1)
+            try:
+                fl = os.path.getsize(f3)
+            except FileNotFoundError:
+                fl = 0
         if render:
             args = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-r", str(fps), "-f", "rawvideo", "-pix_fmt", "rgb24", "-video_size", "x".join(str(i) for i in screensize), "-i", "-"]
             if play:
-                args.extend(("-vn", "-i", f_in))
+                args.extend(("-vn", "-i", f3))
             args.extend(("-b:v", "4M"))
             if play:
                 d = round((screensize[0] - self.cutoff) / speed / fps * 1000)
                 args.extend(("-af", f"adelay=delays={d}:all=1"))
-            args.append(f3)
+            args.append(f4)
             print(" ".join(args))
             fut2 = exc.submit(psutil.Popen, args, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
         if display:
@@ -158,7 +182,7 @@ class Render:
             args = ["ffplay", "-loglevel", "error", "-hide_banner", "-nodisp", "-autoexit", "-f", "s16le", "-ar", str(sample_rate), "-ac", "2", "-i", "-"]
             print(" ".join(args))
             fut5 = exc.submit(psutil.Popen, args, stdin=subprocess.PIPE)
-            args = ["ffmpeg", "-loglevel", "error", "-i", f_in, "-f", "s16le", "-ar", str(sample_rate), "-ac", "2", "-"]
+            args = ["ffmpeg", "-loglevel", "error", "-i", f3, "-f", "s16le", "-ar", str(sample_rate), "-ac", "2", "-"]
             print(" ".join(args))
             fut6 = exc.submit(psutil.Popen, args, stdout=subprocess.PIPE)
         self.player_buffer = None
@@ -370,7 +394,6 @@ class Render:
 
 if __name__ == "__main__":
     ytdl = None
-
     if not os.path.exists("config.json"):
         data = "{" + "\n\t".join((
                 '"source": "Paladin.mp3",',
@@ -429,9 +452,10 @@ if __name__ == "__main__":
             source = entry
             fn = source.rsplit(".", 1)[0]
         f2 = fn + ".pcm"
-        f3 = fn + ".mp4"
+        f3 = fn + ".wav"
+        f4 = fn + ".mp4"
         print("Loading", source)
         r = Render(source)
         if render:
-            print("Rendering", f3)
+            print("Rendering", f4)
         r.start()
