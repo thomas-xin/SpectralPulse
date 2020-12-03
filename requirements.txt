@@ -1,0 +1,7 @@
+numpy>=1.19.4
+pillow>=8.0.1
+psutil>=5.7.3
+pygame>=2.0.0
+colormath>=3.0.0
+youtube-dlc>=2020.11.11.post3
+requests>=2.25.0
