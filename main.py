@@ -163,7 +163,7 @@ class Render:
             args = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-r", str(fps), "-f", "rawvideo", "-pix_fmt", "rgb24", "-video_size", "x".join(str(i) for i in screensize), "-i", "-"]
             if play:
                 args.extend(("-vn", "-i", f3))
-            args.extend(("-b:v", "4M"))
+            args.extend(("-c:v", "h264", "-b:v", "4M"))
             if play:
                 d = round((screensize[0] - self.cutoff) / speed / fps * 1000)
                 args.extend(("-af", f"adelay=delays={d}:all=1"))
@@ -192,6 +192,7 @@ class Render:
         self.fff = np.fft.fftfreq(res_scale, 1 / sample_rate)[:dfts]
         maxfreq = np.max(self.fff)
         self.fftrans = np.zeros(dfts, dtype=int)
+        self.glow_buffer = deque()
         for i, x in enumerate(self.fff):
             if x <= 0:
                 x = screensize[1] - 1
@@ -283,6 +284,9 @@ class Render:
         amp = np.multiply(np.multiply(amp, self.scale, out=amp), 256, out=amp)
         sat = np.clip(511 - amp, 0, 255).astype(np.uint8)
         val = np.clip(amp, 0, 255).astype(np.uint8)
+        if len(self.glow_buffer) >= (screensize[0] - self.cutoff) / speed:
+            self.trans[self.cutoff] = self.glow_buffer.popleft()
+        self.glow_buffer.append(min(255, int(sum(amp) / self.scale / 524288) + 127))
         if particles and data:
             np.multiply(amp, 1 / 64, out=amp)
             np.clip(amp, 0, 64, out=amp)
@@ -309,7 +313,7 @@ class Render:
 
     def start(self):
         with suppress(StopIteration):
-            self.trans[self.cutoff] = 255
+            self.trans[self.cutoff] = 127
             futs = None
             ts = time.time_ns()
             timestamps = deque()
@@ -417,7 +421,10 @@ if __name__ == "__main__":
     argv = sys.argv[1:]
     while len(argv) >= 2:
         if argv[0].startswith("-"):
-            globals()[argv[0][1:]] = argv[1]
+            arg = argv[1]
+            with suppress(SyntaxError, NameError):
+                arg = eval(arg)
+            globals()[argv[0][1:]] = arg
             argv = argv[2:]
         else:
             break

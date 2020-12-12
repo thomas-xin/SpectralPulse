@@ -720,7 +720,7 @@ class AudioDownloader:
                 resp = resp[resp.index(search) + len(search):]
                 search = b"Duration: "
                 resp = resp[resp.index(search) + len(search):]
-                entry["duration"] = time_parse(resp[:resp.index(b"<br><br>")].decode("utf-8", "replace"))
+                entry["duration"] = dur = time_parse(resp[:resp.index(b"<br><br>")].decode("utf-8", "replace"))
             search = b"</a></td></tr></tbody></table><h3>Audio</h3>"
             resp = resp[resp.index(search) + len(search):]
             with suppress(ValueError):
@@ -896,6 +896,9 @@ class AudioDownloader:
                 out.extend(fut.result()[0])
         return out
 
+    def ydl_errors(self, s):
+        return not ("video unavailable" in s or "this video is not available" in s or "this video contains content from" in s)
+
     # Repeatedly makes calls to youtube-dl until there is no more data to be collected.
     def extract_true(self, url):
         while not is_url(url):
@@ -923,7 +926,7 @@ class AudioDownloader:
             entries = self.downloader.extract_info(url, download=False, process=True)
         except Exception as ex:
             s = str(ex).casefold()
-            if type(ex) is not youtube_dl.DownloadError or ("403" in s or "429" in s or "no video formats found" in s or "unable to extract video data" in s or "unable to extract js player" in s or "geo restriction" in s):
+            if type(ex) is not youtube_dl.DownloadError or self.ydl_errors(s):
                 try:
                     entries = self.extract_backup(url)
                 except youtube_dl.DownloadError:
@@ -960,7 +963,7 @@ class AudioDownloader:
             return self.downloader.extract_info(url, download=False, process=False)
         except Exception as ex:
             s = str(ex).casefold()
-            if type(ex) is not youtube_dl.DownloadError or ("403" in s or "429" in s or "no video formats found" in s or "unable to extract video data" in s or "unable to extract js player" in s or "geo restriction" in s):
+            if type(ex) is not youtube_dl.DownloadError or self.ydl_errors(s):
                 if is_url(url):
                     try:
                         return self.extract_backup(url)
