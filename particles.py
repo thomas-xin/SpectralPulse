@@ -77,9 +77,9 @@ class Circles:
                     curr = dict(size=surf.size)
                     for c, v in zip("RGB", colour):
                         if v == 255:
-                            CIRCLES[tup][c] = surf
+                            curr[c] = surf
                         elif v:
-                            CIRCLES[tup][c] = surf.point((np.arange(256) * v / 255).astype(np.uint8))
+                            curr[c] = surf.point((np.arange(256) * v / 255).astype(np.uint8))
                     CIRCLES[tup] = curr
                     return curr
                 except MemoryError:
@@ -131,7 +131,7 @@ class Particles:
                         pwr += 1 / 64
                         PARTICLES[Particle((screensize[0], x * 4 + 2), colour=self.colours[x << 1], intensity=pwr)] = None
                 # Display and update particles
-                for particle in PARTICLES:
+                for particle in tuple(PARTICLES):
                     particle.render(sfx=sfx)
                     particle.update()
         return sfx.tobytes()
