@@ -1,3 +1,5 @@
+# This file mostly contains code copied from the Miza discord bot's voice command category
+
 import youtube_dlc, contextlib, requests, math, time, numpy, base64, hashlib, re, collections, psutil, subprocess, urllib.parse, concurrent.futures
 from math import *
 
