@@ -479,7 +479,7 @@ if __name__ == "__main__":
     # Get config file data, create a new one if unavailable
     if not os.path.exists("config.json"):
         data = "{" + "\n\t".join((
-                '"source": "Paladin.mp3",',
+                '"source": "",',
                 '"size": [960, 540],',
                 '"fps": 60,',
                 '"sample_rate": 48000,',
@@ -512,6 +512,8 @@ if __name__ == "__main__":
     if len(argv):
         inputs = argv
     else:
+        if not source:
+            source = input("No audio input found in config.json; please input audio file by path or URL: ")
         inputs = [source]
     # Calculate remaining required variables from the input settings
     screensize = size
