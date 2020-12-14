@@ -486,7 +486,7 @@ if __name__ == "__main__":
                 '"amplitude": 0.0625, # Amplitude to scale audio volume, adjust as necessary.',
                 '"speed": 2, # Speed of screen movemement in pixels per frame, does not change audio playback speed.',
                 '"resolution": 192, # Resolution of DFT in bars per pixel, this should be a relatively high number due to the logarithmic scale.',
-                '"particles": "bubble", # May be one of None, "bar", "bubble", "hexagon", or a URL in quotes to indicate image to use for particles.',
+                '"particles": "bubble", # May be one of None, "bar", "bubble", "hexagon", or a file path/URL in quotes to indicate image to use for particles.',
                 '"display": true, # Whether to preview the rendered video in a separate window.',
                 '"render": true, # Whether to output the result to a video file.',
                 '"play": true, # Whether to play the actual audio being rendered.',
