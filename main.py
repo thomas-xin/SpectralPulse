@@ -479,17 +479,17 @@ if __name__ == "__main__":
     # Get config file data, create a new one if unavailable
     if not os.path.exists("config.json"):
         data = "{" + "\n\t".join((
-                '"source": "",',
-                '"size": [960, 540],',
-                '"fps": 60,',
-                '"sample_rate": 48000,',
-                '"amplitude": 0.0625,',
-                '"speed": 2,',
-                '"resolution": 192,',
-                '"particles": "bubble",',
-                '"display": true,',
-                '"render": true,',
-                '"play": true,',
+                '"source": "", # This field may be omitted to be prompted for an input at runtime; may be a file path or URL.',
+                '"size": [960, 540], # Both dimensions should be divisible by 4 for best results.',
+                '"fps": 60, # Framerate of the output video.',
+                '"sample_rate": 48000, # Sample rate to evaluate fourier transforms at, should be a multiple of fps.',
+                '"amplitude": 0.0625, # Amplitude to scale audio volume, adjust as necessary.',
+                '"speed": 2, # Speed of screen movemement in pixels per frame, does not change audio playback speed.',
+                '"resolution": 192, # Resolution of DFT in bars per pixel, this should be a relatively high number due to the logarithmic scale.',
+                '"particles": "bubble", # May be one of None, "bar", "bubble", "hexagon", or a URL in quotes to indicate image to use for particles.',
+                '"display": true, # Whether to preview the rendered video in a separate window.',
+                '"render": true, # Whether to output the result to a video file.',
+                '"play": true, # Whether to play the actual audio being rendered.',
             )) + "\n}"
         with open("config.json", "w") as f:
             f.write(data)
