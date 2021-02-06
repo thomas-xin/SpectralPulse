@@ -133,7 +133,7 @@ if __name__ == "__main__":
 
     # Default settings for the program
     sample_rate = 48000
-    fps = 60
+    fps = 30
     amplitude = 0.1
     smudge_ratio = 0.9
     render = display = particles = play = 0
@@ -185,7 +185,7 @@ if __name__ == "__main__":
                 # Start ffmpeg process to convert output bitmap images and wav audio into a mp4 video
                 args = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-r", str(fps), "-f", "rawvideo", "-pix_fmt", "rgb24", "-video_size", "x".join(str(i) for i in screensize), "-i", "-"]
                 if play:
-                    args.extend(("-vn", "-f", "wav", "-i", f3, "-b:a", "192k"))
+                    args.extend(("-vn", "-f", "wav", "-i", f3, "-b:a", "256k"))
                 args.extend(("-c:v", "h264", "-b:v", "4M"))
                 if play:
                     d = round((screensize[0] - self.cutoff) / speed / fps * 1000)
@@ -491,7 +491,7 @@ if __name__ == "__main__":
         data = "{" + "\n\t" + "\n\t".join((
                 '"source": "", # This field may be omitted to be prompted for an input at runtime; may be a file path or URL.',
                 '"size": [960, 540], # Both dimensions should be divisible by 4 for best results.',
-                '"fps": 60, # Framerate of the output video.',
+                '"fps": 30, # Framerate of the output video.',
                 '"sample_rate": 48000, # Sample rate to evaluate fourier transforms at, should be a multiple of fps.',
                 '"amplitude": 0.1, # Amplitude to scale audio volume, adjust as necessary.',
                 '"smudge_ratio": 0.9, # Redirects vertical blurriness horizontally; should be a value between 0 and 1.',
