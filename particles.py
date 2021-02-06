@@ -96,7 +96,7 @@ class Circles:
                         surf = CIRCLES[radius]
                     except KeyError:
                         if particles == "trail":
-                            r = radius + 2
+                            r = radius + 1
                             h = 8
                             s = 8
                             surf = Image.new("L", (r * h + r, r * 2), 0)
@@ -110,7 +110,7 @@ class Circles:
                             surf = IMAGE.resize((radius << 1,) * 2, resample=Image.LANCZOS)
                         else:
                             # Otherwise draw a series of concentric hexagons or circles to produce particle shape
-                            r = radius + 2
+                            r = radius + 1
                             surf = Image.new("L", (r * 2,) * 2, 0)
                             draw = ImageDraw.Draw(surf)
                             for c in range(1, radius):

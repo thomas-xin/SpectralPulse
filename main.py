@@ -185,7 +185,7 @@ if __name__ == "__main__":
                 # Start ffmpeg process to convert output bitmap images and wav audio into a mp4 video
                 args = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-r", str(fps), "-f", "rawvideo", "-pix_fmt", "rgb24", "-video_size", "x".join(str(i) for i in screensize), "-i", "-"]
                 if play:
-                    args.extend(("-vn", "-f", "wav", "-i", f3))
+                    args.extend(("-vn", "-f", "wav", "-i", f3, "-b:a", "192k"))
                 args.extend(("-c:v", "h264", "-b:v", "4M"))
                 if play:
                     d = round((screensize[0] - self.cutoff) / speed / fps * 1000)
@@ -454,7 +454,7 @@ if __name__ == "__main__":
                     # Display output as a progress bar on the console
                     out = f"\r{C.white}|{create_progress_bar(ratio, 64, ((-t * 16 / fps) % 6 / 6))}{C.white}| ({C.green}{time_disp(t / fps)}{C.white}/{C.red}{time_disp(fs / sample_rate / 4)}{C.white}) | Estimated time remaining: {C.magenta}[{time_disp(rem)}]"
                     out += " " * (120 - len(nocol(out))) + C.white
-                    # sys.stdout.write(out)
+                    sys.stdout.write(out)
                     # Wait until the time for the next frame
                     while time.time_ns() < ts + billion / fps:
                         time.sleep(0.001)
