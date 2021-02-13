@@ -7,13 +7,14 @@ print = lambda *args, sep=" ", end="\n": sys.__stderr__.write(str(sep).join(str(
 
 # Read input from the main process, set screen size and decide what to use as the particle
 screensize = [int(x) for x in sys.argv[2:4]]
-barcount = 118
+barcount = int(sys.argv[4])
+highest_note = int(sys.argv[5])
 particles = sys.argv[1].casefold()
 IMAGE = None
 try:
     particles = eval(particles)
 except (SyntaxError, NameError):
-    if particles == "bar":
+    if particles in ("bar", "piano"):
         pid = 1
     elif particles in ("bubble", "hexagon"):
         pid = 2
@@ -184,7 +185,7 @@ class Particles:
                     # print(len(spawn), len(self.bars))
                     self.bars[i].ensure(pwr * 24)
                 # Display and update bars
-                for bar in sorted(self.bars, key=lambda bar: bar.size):
+                for bar in self.bars:
                     bar.render(sfx=sfx)
                     bar.update()
             elif Particle in (Bubble, Trail):
@@ -241,14 +242,19 @@ class Particle(collections.abc.Hashable):
 # Bar particle class, simulates an exponentially decreasing bar with a gradient
 class Bar(Particle):
 
-    __slots__ = ("y", "colour", "width", "height", "surf")
-    line = Image.new("RGB", (1, width), 16777215)
+    __slots__ = ("y", "colour", "width", "height", "surf", "line")
 
-    def __init__(self, x, colour):
+    def __init__(self, x):
         super().__init__()
+        self.colour = tuple(round(i * 255) for i in colorsys.hsv_to_rgb(x / barcount, 1, 1))
+        if particles == "bar":
+            if x & 1:
+                self.colour = tuple(i + 1 >> 1 for i in self.colour)
+        elif (highest_note - x - 3) % 12 in (1, 3, 6, 8, 10):
+            self.colour = tuple(i + 1 >> 1 for i in self.colour)
         self.y = round(screensize[1] / barcount * x)
         self.width = min(screensize[1], round(screensize[1] / barcount * (x + 1))) - self.y
-        self.colour = colour
+        self.line = Image.new("RGB", (1, self.width), 16777215)
         # Generate gradient of 2 pixels
         # if self.y & 4:
         #     surf = Image.new("RGB", (2, 1), tuple(x + 1 >> 1 for x in colour))

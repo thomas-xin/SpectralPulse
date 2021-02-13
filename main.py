@@ -302,6 +302,7 @@ if __name__ == "__main__":
     amplitude = 0.1
     smudge_ratio = 0.9
     render = display = particles = play = 0
+    higher_bound = lower_bound = None
     skip = 1
     speed = resolution = 1
     screensize = size = (960, 540)
@@ -311,6 +312,7 @@ if __name__ == "__main__":
     class Render:
 
         def __init__(self, f_in):
+            global higher_bound, lower_bound
             # Cutoff between particle and spectrum display is 1/4 of the screen
             self.cutoff = screensize[0] >> 2
             # Start ffmpeg process to calculate single precision float samples from the audio if required
@@ -364,9 +366,36 @@ if __name__ == "__main__":
                 args = [("python3", "python")[os.name == "nt"], "display.py", *[str(x) for x in screensize]]
                 print(" ".join(args))
                 fut3 = exc.submit(psutil.Popen, args, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL)
+            if not higher_bound:
+                higher_bound = "F#9"
+            if str(higher_bound).isnumeric():
+                highest_note = int(higher_bound)
+            else:
+                highest_note = "A~BC~D~EF~G".index(higher_bound[0].upper()) + ("#" in higher_bound)
+                while higher_bound[0] not in "0123456789-":
+                    higher_bound = higher_bound[1:]
+                    if not higher_bound:
+                        raise ValueError("Octave not found.")
+                highest_note += int(higher_bound) * 12
+            if not lower_bound:
+                lower_bound = "A0"
+            if str(lower_bound).isnumeric():
+                lowest_note = int(lower_bound)
+            else:
+                lowest_note = "A~BC~D~EF~G".index(lower_bound[0].upper()) + ("#" in lower_bound)
+                while lower_bound[0] not in "0123456789-":
+                    lower_bound = lower_bound[1:]
+                    if not lower_bound:
+                        raise ValueError("Octave not found.")
+                lowest_note += int(lower_bound) * 12
+            maxfreq = 27.5 * 2 ** ((highest_note + 0.5) / 12)
+            minfreq = 27.5 * 2 ** ((lowest_note - 0.5) / 12)
+            globals()["barcount"] = int(highest_note - lowest_note) + 1
+            freqmul = 1 / (1 - log(minfreq, maxfreq))
+            print(maxfreq, minfreq, freqmul)
             if particles:
                 # Start python process running particles.py to render the particles using amplitude sample data
-                args = [("python3", "python")[os.name == "nt"], "particles.py", str(particles), str(self.cutoff), str(screensize[1])]
+                args = [("python3", "python")[os.name == "nt"], "particles.py", str(particles), str(self.cutoff), str(screensize[1]), str(barcount), str(highest_note)]
                 print(" ".join(args))
                 fut4 = exc.submit(psutil.Popen, args, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
             if play:
@@ -390,8 +419,6 @@ if __name__ == "__main__":
             dfts = (res_scale >> 1) + 1
             # Frequency list of the fast fourier transform algorithm output
             self.fff = np.fft.fftfreq(res_scale, 1 / sample_rate)[:dfts]
-            maxfreq = 24373.5095579329876317337968807881838950150937323874234084194 # F#9 highest note
-            freqmul = 1.482002682731321315668103302665950827244209788343018510172972184558061704 # A0 lowest note
             # FFT returns the values along a linear scale, we want the display the data as a logarithmic scale (because that's how pitch in music works)
             self.fftrans = np.zeros(dfts, dtype=int)
             for i, x in enumerate(self.fff):
@@ -519,8 +546,7 @@ if __name__ == "__main__":
                 np.clip(amp, 0, 64, out=amp)
                 if getattr(self.part, "fut", None):
                     self.part.fut.result()
-                if str(particles) == "bar":
-                    barcount = 118
+                if str(particles) in ("bar", "piano"):
                     compat = np.zeros(barcount, dtype=np.float32)
                     try:
                         bartrans = self.bartrans
@@ -626,7 +652,7 @@ if __name__ == "__main__":
                         # Display output as a progress bar on the console
                         out = f"\r{C.white}|{create_progress_bar(ratio, 64, ((-t * 16 / fps) % 6 / 6))}{C.white}| ({C.green}{time_disp(t / fps)}{C.white}/{C.red}{time_disp(fs / sample_rate / 4)}{C.white}) | Estimated time remaining: {C.magenta}[{time_disp(rem)}]"
                         out += " " * (120 - len(nocol(out))) + C.white
-                        # sys.stdout.write(out)
+                        sys.stdout.write(out)
                         # Wait until the time for the next frame
                         while time.time_ns() < ts + billion / fps:
                             time.sleep(0.001)
@@ -669,7 +695,9 @@ if __name__ == "__main__":
                 '"smudge_ratio": 0.9, # Redirects vertical blurriness horizontally; should be a value between 0 and 1.',
                 '"speed": 2, # Speed of screen movemement in pixels per frame, does not change audio playback speed.',
                 '"resolution": 192, # Resolution of DFT in bars per pixel, this should be a relatively high number due to the logarithmic scale.',
-                '"particles": "bubble", # May be one of None, "bar", "bubble", "hexagon", or a file path/URL in quotes to indicate image to use for particles.',
+                '"lower_bound": "A0" # Lowest musical note displayed on the spectrogram.',
+                '"higher_bound": "F#9" # Highest musical note displayed on the spectrogram.',
+                '"particles": "piano", # May be one of None, "bar", "bubble", "piano", "hexagon", or a file path/URL in quotes to indicate image to use for particles.',
                 '"skip": true, # Whether to seek video to when audio begins playing.'
                 '"display": true, # Whether to preview the rendered video in a separate window.',
                 '"render": true, # Whether to output the result to a video file.',
