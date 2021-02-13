@@ -10,10 +10,12 @@ if os.name == "nt":
 import numpy, time, psutil, sys, collections, random, contextlib, re, itertools, concurrent.futures
 suppress = contextlib.suppress
 from math import *
+from PIL import Image
 if __name__ == "__main__":
     # Requires a thread pool to manage concurrent pipes
     exc = concurrent.futures.ThreadPoolExecutor(max_workers=8)
-    from PIL import Image, ImageChops
+    from PIL import ImageChops
+    import requests
 
 np = numpy
 deque = collections.deque
@@ -64,6 +66,170 @@ class cdict(dict):
     ___repr__ = lambda self: super().__repr__()
     to_dict = lambda self: dict(**self)
     to_list = lambda self: list(super().values())
+
+
+def rgb_split(image, dtype=np.uint8):
+    channels = None
+    if "RGB" not in str(image.mode):
+        if str(image.mode) == "L":
+            channels = [np.asarray(image, dtype=dtype)] * 3
+        else:
+            image = image.convert("RGB")
+    if channels is None:
+        a = np.asarray(image, dtype=dtype)
+        channels = np.moveaxis(a, -1, 0)[:3]
+    return channels
+
+def hsv_split(image, convert=True, partial=False, dtype=np.uint8):
+    channels = rgb_split(image, dtype=np.uint32)
+    R, G, B = channels
+    m = np.min(channels, 0)
+    M = np.max(channels, 0)
+    C = M - m #chroma
+    Cmsk = C != 0
+
+    # Hue
+    H = np.zeros(R.shape, dtype=np.float32)
+    for i, colour in enumerate(channels):
+        mask = (M == colour) & Cmsk
+        hm = channels[i - 2][mask].astype(np.float32)
+        hm -= channels[i - 1][mask]
+        hm /= C[mask]
+        if i:
+            hm += i << 1
+        H[mask] = hm
+    H *= 256 / 6
+    H = H.astype(dtype)
+
+    if partial:
+        return H, M, m, C, Cmsk, channels
+
+    # Saturation
+    S = np.zeros(R.shape, dtype=dtype)
+    # S = np.full(R.shape, 255, dtype=dtype)
+    Mmsk = M != 0
+    S[Mmsk] = np.clip(256 * C[Mmsk] // M[Mmsk], None, 255)
+
+    # Value
+    V = M.astype(dtype)
+
+    out = [H, S, V]
+    if convert:
+        out = list(Image.fromarray(a, "L") for a in out)
+    return out
+
+def hsl_split(image, convert=True, dtype=np.uint8):
+    H, M, m, C, Cmsk, channels = hsv_split(image, partial=True, dtype=dtype)
+
+    # Luminance
+    L = np.mean((M, m), 0, dtype=np.int32)
+
+    # Saturation
+    S = np.zeros(H.shape, dtype=dtype)
+    Lmsk = Cmsk
+    Lmsk &= (L != 1) & (L != 0)
+    S[Lmsk] = np.clip((C[Lmsk] << 8) // (255 - np.abs((L[Lmsk] << 1) - 255)), None, 255)
+
+    L = L.astype(dtype)
+
+    out = [H, S, L]
+    if convert:
+        out = list(Image.fromarray(a, "L") for a in out)
+    return out
+
+def hsi_split(image, convert=True, dtype=np.uint8):
+    H, M, m, C, Cmsk, channels = hsv_split(image, partial=True, dtype=dtype)
+
+    # Intensity
+    I = np.mean(channels, 0, dtype=np.float32).astype(dtype)
+
+    # Saturation
+    S = np.zeros(H.shape, dtype=dtype)
+    Imsk = I != 0
+    S[Imsk] = 255 - np.clip((m[Imsk] << 8) // I[Imsk], None, 255)
+
+    out = [H, S, I]
+    if convert:
+        out = list(Image.fromarray(a, "L") for a in out)
+    return out
+
+def rgb_merge(R, G, B, convert=True):
+    out = np.empty(R.shape + (3,), dtype=np.uint8)
+    outT = np.moveaxis(out, -1, 0)
+    outT[:] = [np.clip(a, None, 255) for a in (R, G, B)]
+    if convert:
+        out = Image.fromarray(out, "RGB")
+    return out
+
+def hsv_merge(H, S, V, convert=True):
+    return hsl_merge(H, S, V, convert, value=True)
+
+def hsl_merge(H, S, L, convert=True, value=False, intensity=False):
+    S = np.asarray(S, dtype=np.float32)
+    S *= 1 / 255
+    np.clip(S, None, 1, out=S)
+    L = np.asarray(L, dtype=np.float32)
+    L *= 1 / 255
+    np.clip(L, None, 1, out=L)
+    H = np.asarray(H, dtype=np.uint8)
+
+    Hp = H.astype(np.float32) * (6 / 256)
+    Z = (1 - np.abs(Hp % 2 - 1))
+    if intensity:
+        C = (3 * L * S) / (Z + 1)
+    elif value:
+        C = L * S
+    else:
+        C = (1 - np.abs(2 * L - 1)) * S
+    X = C * Z
+
+    # initilize with zero
+    R = np.zeros(H.shape, dtype=np.float32)
+    G = np.zeros(H.shape, dtype=np.float32)
+    B = np.zeros(H.shape, dtype=np.float32)
+
+    # handle each case:
+    mask = (Hp < 1)
+    # mask = (Hp >= 0) == (Hp < 1)
+    R[mask] = C[mask]
+    G[mask] = X[mask]
+    mask = (1 <= Hp) == (Hp < 2)
+    # mask = (Hp >= 1) == (Hp < 2)
+    R[mask] = X[mask]
+    G[mask] = C[mask]
+    mask = (2 <= Hp) == (Hp < 3)
+    # mask = (Hp >= 2) == (Hp < 3)
+    G[mask] = C[mask]
+    B[mask] = X[mask]
+    mask = (3 <= Hp) == (Hp < 4)
+    # mask = (Hp >= 3) == (Hp < 4)
+    G[mask] = X[mask]
+    B[mask] = C[mask]
+    mask = (4 <= Hp) == (Hp < 5)
+    # mask = (Hp >= 4) == (Hp < 5)
+    B[mask] = C[mask]
+    R[mask] = X[mask]
+    mask = (5 <= Hp)
+    # mask = (Hp >= 5) == (Hp < 6)
+    B[mask] = X[mask]
+    R[mask] = C[mask]
+
+    if intensity:
+        m = L * (1 - S)
+    elif value:
+        m = L - C
+    else:
+        m = L - 0.5 * C
+    R += m
+    G += m
+    B += m
+    R *= 255
+    G *= 255
+    B *= 255
+    return rgb_merge(R, G, B, convert)
+
+def hsi_merge(H, S, V, convert=True):
+    return hsl_merge(H, S, V, convert, intensity=True)
 
 
 if __name__ == "__main__":
@@ -137,6 +303,7 @@ if __name__ == "__main__":
     amplitude = 0.1
     smudge_ratio = 0.9
     render = display = particles = play = 0
+    skip = 1
     speed = resolution = 1
     screensize = size = (960, 540)
 
@@ -187,7 +354,7 @@ if __name__ == "__main__":
                 if play:
                     args.extend(("-vn", "-f", "wav", "-i", f3, "-b:a", "256k"))
                 args.extend(("-c:v", "h264", "-b:v", "4M"))
-                if play:
+                if play and not skip:
                     d = round((screensize[0] - self.cutoff) / speed / fps * 1000)
                     args.extend(("-af", f"adelay=delays={d}:all=1"))
                 args.append(f4)
@@ -378,7 +545,8 @@ if __name__ == "__main__":
             self.sat = imgsat
             self.val = imgval
             # Merge arrays into a single HSV image, converting to RGB and extracting as a 1D array
-            return np.uint8(Image.merge("HSV", (self.hue, self.sat, self.val)).convert("RGB"))[0]
+            return hsv_merge(self.hue, self.sat, self.val, convert=False)[0]
+            # return np.uint8(Image.merge("HSV", (self.hue, self.sat, self.val)).convert("RGB"))[0]
 
         def start(self):
             with suppress(StopIteration):
@@ -433,32 +601,33 @@ if __name__ == "__main__":
                     # Initialize work buffer for next frame
                     futs = deque()
                     # Enqueue rendering the display and video to the worker processes
-                    for p in ("display", "render"):
-                        if globals().get(p):
-                            proc = getattr(self, p[:4], None)
-                            if proc:
-                                futs.append(exc.submit(proc.stdin.write, b))
-                    # Calculate current audio position, total audio duration, estimated remaining render time
-                    billion = 1000000000
-                    t = time.time_ns()
-                    while timestamps and timestamps[0] < t - 60 * billion:
-                        timestamps.popleft()
-                    timestamps.append(t)
-                    fs = os.path.getsize(f2)
-                    x = max(1, fs / (sample_rate // fps << 2))
-                    t = max(0, i - (screensize[0] - self.cutoff) / speed)
-                    ratio = min(1, t / x)
-                    rem = inf
-                    with suppress(OverflowError, ZeroDivisionError):
-                        rem = (fs / sample_rate / 4 - t / fps) / (len(timestamps) / fps / 60)
-                    # Display output as a progress bar on the console
-                    out = f"\r{C.white}|{create_progress_bar(ratio, 64, ((-t * 16 / fps) % 6 / 6))}{C.white}| ({C.green}{time_disp(t / fps)}{C.white}/{C.red}{time_disp(fs / sample_rate / 4)}{C.white}) | Estimated time remaining: {C.magenta}[{time_disp(rem)}]"
-                    out += " " * (120 - len(nocol(out))) + C.white
-                    sys.stdout.write(out)
-                    # Wait until the time for the next frame
-                    while time.time_ns() < ts + billion / fps:
-                        time.sleep(0.001)
-                    ts = max(ts + billion / fps, time.time_ns() - billion / fps)
+                    if not skip or i >= (screensize[0] - self.cutoff) / speed:
+                        for p in ("display", "render"):
+                            if globals().get(p):
+                                proc = getattr(self, p[:4], None)
+                                if proc:
+                                    futs.append(exc.submit(proc.stdin.write, b))
+                        # Calculate current audio position, total audio duration, estimated remaining render time
+                        billion = 1000000000
+                        t = time.time_ns()
+                        while timestamps and timestamps[0] < t - 60 * billion:
+                            timestamps.popleft()
+                        timestamps.append(t)
+                        fs = os.path.getsize(f2)
+                        x = max(1, fs / (sample_rate // fps << 2))
+                        t = max(0, i - (screensize[0] - self.cutoff) / speed)
+                        ratio = min(1, t / x)
+                        rem = inf
+                        with suppress(OverflowError, ZeroDivisionError):
+                            rem = (fs / sample_rate / 4 - t / fps) / (len(timestamps) / fps / 60)
+                        # Display output as a progress bar on the console
+                        out = f"\r{C.white}|{create_progress_bar(ratio, 64, ((-t * 16 / fps) % 6 / 6))}{C.white}| ({C.green}{time_disp(t / fps)}{C.white}/{C.red}{time_disp(fs / sample_rate / 4)}{C.white}) | Estimated time remaining: {C.magenta}[{time_disp(rem)}]"
+                        out += " " * (120 - len(nocol(out))) + C.white
+                        sys.stdout.write(out)
+                        # Wait until the time for the next frame
+                        while time.time_ns() < ts + billion / fps:
+                            time.sleep(0.001)
+                        ts = max(ts + billion / fps, time.time_ns() - billion / fps)
             # Close everything and exit
             self.file.close()
             if render:
@@ -498,6 +667,7 @@ if __name__ == "__main__":
                 '"speed": 2, # Speed of screen movemement in pixels per frame, does not change audio playback speed.',
                 '"resolution": 192, # Resolution of DFT in bars per pixel, this should be a relatively high number due to the logarithmic scale.',
                 '"particles": "bubble", # May be one of None, "bar", "bubble", "hexagon", or a file path/URL in quotes to indicate image to use for particles.',
+                '"skip": true, # Whether to seek video to when audio begins playing.'
                 '"display": true, # Whether to preview the rendered video in a separate window.',
                 '"render": true, # Whether to output the result to a video file.',
                 '"play": true, # Whether to play the actual audio being rendered.',
@@ -536,6 +706,13 @@ if __name__ == "__main__":
     for path in inputs:
         if is_url(path):
             if ytdl is None:
+                with requests.head(path, stream=True) as resp:
+                    headers = {k.casefold(): v for k, v in requests.headers}
+                mime = headers.get("content-type", "")
+                if mime.startswith("audio/") or mime.startswith("video/"):
+                    if mime != "audio/midi":
+                        futs.append(path)
+                        continue
                 from audio_downloader import AudioDownloader
                 ytdl = AudioDownloader()
             futs.append(exc.submit(ytdl.extract, path))

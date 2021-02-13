@@ -503,33 +503,72 @@ e_dur = lambda d: float(d) if type(d) is str else (d if d is not None else 300)
 
 
 # Runs ffprobe on a file or url, returning the duration if possible.
-def get_duration(filename):
-    command = ["ffprobe", "-hide_banner", filename]
+def _get_duration(filename, _timeout=12):
+    command = (
+        "ffprobe",
+        "-v",
+        "error",
+        "-select_streams",
+        "a:0",
+        "-show_entries",
+        "stream=duration,bit_rate",
+        "-of",
+        "default=nokey=1:noprint_wrappers=1",
+        filename,
+    )
     resp = None
-    for _ in range(3):
-        try:
-            proc = psutil.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            fut = create_future_ex(proc.communicate, timeout=2)
-            res = fut.result(timeout=2)
-            resp = bytes().join(res)
-            break
-        except:
-            with suppress():
-                proc.kill()
-            raise
-    if not resp:
-        return None
-    s = resp.decode("utf-8", "replace")
-    with suppress(ValueError):
-        i = s.index("Duration: ")
-        d = s[i + 10:]
-        i = 2147483647
-        for c in ", \n\r":
-            with suppress(ValueError):
-                x = d.index(c)
-                if x < i:
-                    i = x
-        dur = time_parse(d[:i])
+    try:
+        proc = psutil.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE)
+        fut = create_future_ex(proc.wait, timeout=_timeout)
+        res = fut.result(timeout=_timeout)
+        resp = proc.stdout.read().split()
+    except:
+        with suppress():
+            proc.kill()
+        print_exc()
+    try:
+        dur = float(resp[0])
+    except (IndexError, ValueError):
+        dur = None
+    bps = None
+    if len(resp) > 1:
+        with suppress(ValueError):
+            bps = float(resp[1])
+    return dur, bps
+
+def get_duration(filename):
+    if filename:
+        dur, bps = _get_duration(filename, 4)
+        if not dur and is_url(filename):
+            with requests.get(filename, headers=Request.header(), stream=True) as resp:
+                head = fcdict(resp.headers)
+                if "Content-Length" not in head:
+                    return _get_duration(filename, 20)[0]
+                if bps:
+                    print(head, bps, sep="\n")
+                    return (int(head["Content-Length"]) << 3) / bps
+                ctype = [e.strip() for e in head.get("Content-Type", "").split(";") if "/" in e][0]
+                if ctype.split("/", 1)[0] not in ("audio", "video"):
+                    return nan
+                if ctype == "audio/midi":
+                    return nan
+                it = resp.iter_content(65536)
+                data = next(it)
+            ident = str(magic.from_buffer(data))
+            print(head, ident, sep="\n")
+            try:
+                bitrate = regexp("[0-9]+\\s.bps").findall(ident)[0].casefold()
+            except IndexError:
+                return _get_duration(filename, 16)[0]
+            bps, key = bitrate.split(None, 1)
+            bps = float(bps)
+            if key.startswith("k"):
+                bps *= 1e3
+            elif key.startswith("m"):
+                bps *= 1e6
+            elif key.startswith("g"):
+                bps *= 1e9
+            return (int(head["Content-Length"]) << 3) / bps
         return dur
 
 
@@ -899,7 +938,7 @@ class AudioDownloader:
         return out
 
     def ydl_errors(self, s):
-        return not ("video unavailable" in s or "this video is not available" in s or "this video contains content from" in s or "this video has been removed" in s)
+        return not ("this video contains content from" in s or "this video has been removed" in s)
 
     # Repeatedly makes calls to youtube-dl until there is no more data to be collected.
     def extract_true(self, url):
