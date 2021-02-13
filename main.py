@@ -14,7 +14,6 @@ from PIL import Image
 if __name__ == "__main__":
     # Requires a thread pool to manage concurrent pipes
     exc = concurrent.futures.ThreadPoolExecutor(max_workers=8)
-    from PIL import ImageChops
     import requests
 
 np = numpy
@@ -391,14 +390,15 @@ if __name__ == "__main__":
             dfts = (res_scale >> 1) + 1
             # Frequency list of the fast fourier transform algorithm output
             self.fff = np.fft.fftfreq(res_scale, 1 / sample_rate)[:dfts]
-            maxfreq = 24000
+            maxfreq = 24373.5095579329876317337968807881838950150937323874234084194 # F#9 highest note
+            freqmul = 1.482002682731321315668103302665950827244209788343018510172972184558061704 # A0 lowest note
             # FFT returns the values along a linear scale, we want the display the data as a logarithmic scale (because that's how pitch in music works)
             self.fftrans = np.zeros(dfts, dtype=int)
             for i, x in enumerate(self.fff):
                 if x <= 0:
                     continue
                 else:
-                    x = round((1 - log(x, maxfreq)) * pi / 2 * (screensize[1] - 1))
+                    x = round((1 - log(x, maxfreq)) * freqmul * (screensize[1] - 1))
                 if x > screensize[1] - 1:
                     continue
                 self.fftrans[i] = x
@@ -476,17 +476,6 @@ if __name__ == "__main__":
                 self.effects.append(ordered)
 
         def read(self):
-            # buffer = np.frombuffer(self.file.read(sample_rate // fps << 2), dtype=np.float32)
-            # if not len(buffer):
-            #     raise StopIteration
-            # req = sample_rate // fps
-            # if len(buffer) < req:
-            #     buffer = np.concatenate((buffer, self.emptybuff[:req - len(buffer)]))
-            # self.expanded[:res_scale >> 1] = np.tile(self.buffer, ceil(res_scale / sample_rate * fps))[:res_scale >> 1]
-            # self.expanded[res_scale >> 1:] = np.tile(buffer, ceil(res_scale / sample_rate * fps))[:res_scale >> 1]
-            # self.buffer = buffer
-            # # expanded = samplerate.resample(buffer, res_scale / len(buffer), "sinc_best")
-            # dft = np.fft.rfft(self.expanded)
             # Calculate required amount of input data to read, converting to 32 bit floats
             req = (res_scale) - len(self.buffer)
             if req > 0:
@@ -530,14 +519,23 @@ if __name__ == "__main__":
                 np.clip(amp, 0, 64, out=amp)
                 if getattr(self.part, "fut", None):
                     self.part.fut.result()
-                compat = None
-                c = 4
-                for i in range(c):
-                    temp = amp[i::c]
-                    if compat is None:
-                        compat = temp
-                    else:
-                        compat[:len(temp)] += temp
+                if str(particles) == "bar":
+                    barcount = 118
+                    compat = np.zeros(barcount, dtype=np.float32)
+                    try:
+                        bartrans = self.bartrans
+                    except AttributeError:
+                        bartrans = self.bartrans = (np.arange(len(amp)) * (barcount / len(amp))).astype(np.uint32)
+                    np.add.at(compat, bartrans, amp)
+                else:
+                    compat = None
+                    c = 4
+                    for i in range(c):
+                        temp = amp[i::c]
+                        if compat is None:
+                            compat = temp
+                        else:
+                            compat[:len(temp)] += temp
                 self.part.fut = exc.submit(self.part.stdin.write, compat.tobytes())
             # Convert saturation and brightness arrays into 2D arrays of length 1, to prepare them for image conversion
             imgsat = Image.fromarray(np.expand_dims(sat, 0), mode="L")
@@ -565,8 +563,9 @@ if __name__ == "__main__":
                     line = self.fut.result()
                     # Signal to concurrently begin the next frame's render
                     self.fut = exc.submit(self.read)
-                    # Shift entire image {speed} pixels to the left
-                    self.trans[self.cutoff + 1:-speed] = self.trans[self.cutoff + speed + 1:]
+                    if not skip or i >= (screensize[0] - self.cutoff) / speed:
+                        # Shift entire image {speed} pixels to the left
+                        self.trans[self.cutoff + 1:-speed] = self.trans[self.cutoff + speed + 1:]
                     # If the current iteration of the loop would indicate that the spectrum lines have passed the bar, begin rendering buffered particle data
                     if i >= (screensize[0] - self.cutoff) / speed:
                         if particles:
@@ -583,11 +582,13 @@ if __name__ == "__main__":
                         if particles:
                             img = self.effects.popleft()
                             self.trans[:self.cutoff] = img
-                    # Fill right side of the image that's now been shifted across with the RGB values calculated earlier
-                    for x in range(speed):
-                        self.trans[-x - 1] = line
-                    # Convert entire frame's image to byte object, preparing to send to render and display subprocesses
-                    b = self.image.tobytes()
+                    if not skip or i >= (screensize[0] - self.cutoff) / speed:
+                        # Fill right side of the image that's now been shifted across with the RGB values calculated earlier
+                        for x in range(speed):
+                            self.trans[-x - 1] = line
+                    elif skip:
+                        for x in range(speed):
+                            self.trans[self.cutoff + i * speed + x] = line
                     # Ensure that all subprocesses are functioning correctly
                     for p in ("render", "display", "particles"):
                         if globals().get(p):
@@ -602,6 +603,8 @@ if __name__ == "__main__":
                     futs = deque()
                     # Enqueue rendering the display and video to the worker processes
                     if not skip or i >= (screensize[0] - self.cutoff) / speed:
+                        # Convert entire frame's image to byte object, preparing to send to render and display subprocesses
+                        b = self.image.tobytes()
                         for p in ("display", "render"):
                             if globals().get(p):
                                 proc = getattr(self, p[:4], None)
@@ -623,7 +626,7 @@ if __name__ == "__main__":
                         # Display output as a progress bar on the console
                         out = f"\r{C.white}|{create_progress_bar(ratio, 64, ((-t * 16 / fps) % 6 / 6))}{C.white}| ({C.green}{time_disp(t / fps)}{C.white}/{C.red}{time_disp(fs / sample_rate / 4)}{C.white}) | Estimated time remaining: {C.magenta}[{time_disp(rem)}]"
                         out += " " * (120 - len(nocol(out))) + C.white
-                        sys.stdout.write(out)
+                        # sys.stdout.write(out)
                         # Wait until the time for the next frame
                         while time.time_ns() < ts + billion / fps:
                             time.sleep(0.001)

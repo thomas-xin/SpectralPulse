@@ -1305,7 +1305,38 @@ class AudioDownloader:
             return coeff
         out = sorted(high, key=key, reverse=True)
         out.extend(sorted(low, key=key, reverse=True))
-        # print(out)
+        if not out:
+            resp = self.extract_info(query)
+            if resp.get("_type", None) == "url":
+                resp = self.extract_from(resp["url"])
+            if resp.get("_type", None) == "playlist":
+                entries = list(resp["entries"])
+            else:
+                entries = [resp]
+            out = alist()
+            for entry in entries:
+                with tracebacksuppressor:
+                    found = True
+                    if "title" in entry:
+                        title = entry["title"]
+                    else:
+                        title = entry["url"].rsplit("/", 1)[-1]
+                        if "." in title:
+                            title = title[:title.rindex(".")]
+                        found = False
+                    if "duration" in entry:
+                        dur = float(entry["duration"])
+                    else:
+                        dur = None
+                    url = entry.get("webpage_url", entry.get("url", entry.get("id")))
+                    if not url:
+                        continue
+                    temp = cdict(name=title, url=url, duration=dur)
+                    if not is_url(url):
+                        if entry.get("ie_key", "").casefold() == "youtube":
+                            temp["url"] = f"https://www.youtube.com/watch?v={url}"
+                    temp["research"] = True
+                    out.append(temp)
         return out
 
     # Performs a search, storing and using cached search results for efficiency.

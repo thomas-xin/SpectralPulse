@@ -1,12 +1,13 @@
 from main import *
-import PIL, colorsys, requests, io
-from PIL import Image, ImageDraw, ImageMath, ImageOps, ImageChops
+import PIL, colorsys, io
+from PIL import ImageDraw, ImageMath, ImageOps, ImageChops
 
 print = lambda *args, sep=" ", end="\n": sys.__stderr__.write(str(sep).join(str(i) for i in args) + str(end))
 
 
 # Read input from the main process, set screen size and decide what to use as the particle
 screensize = [int(x) for x in sys.argv[2:4]]
+barcount = 118
 particles = sys.argv[1].casefold()
 IMAGE = None
 try:
@@ -19,6 +20,7 @@ except (SyntaxError, NameError):
     elif particles == "trail":
         pid = 3
     elif is_url(particles):
+        import requests
         IMAGE = Image.open(io.BytesIO(requests.get(particles).content))
         pid = -2
     else:
@@ -162,13 +164,13 @@ class Particles:
         # Determine particle type to use
         self.Particle = Particle = (None, Bar, Bubble, Trail)[pid]
         # Use an index count equal to half the screen height (one position every two pixels)
-        s2 = screensize[1] >> 1
-        # Calculate array of hues to render particles as
-        self.colours = [tuple(round(x * 255) for x in colorsys.hsv_to_rgb(i / s2, 1, 1)) for i in range(s2 + 2)]
+        s2 = screensize[1] >> 1 if Particle != Bar else barcount << 1
         # Use an appropriate buffer for exponentially decreasing values, similar to how typical audio volume bars are designed
         if Particle == Bar:
-            self.bars = [Bar(i << 2, self.colours[i << 1]) for i in range(s2 + 1 >> 1)]
+            self.bars = [Bar(i) for i in range(s2 + 1 >> 1)]
         elif Particle in (Bubble, Trail):
+            # Calculate array of hues to render particles as
+            self.colours = [tuple(round(x * 255) for x in colorsys.hsv_to_rgb(i / s2, 1, 1)) for i in range(s2 + 2)]
             self.hits = np.zeros(s2 + 3 >> 1, dtype=float)
 
     def animate(self, spawn):
@@ -179,9 +181,10 @@ class Particles:
             if Particle == Bar:
                 # Raise bars to their current values as required
                 for i, pwr in enumerate(spawn):
+                    # print(len(spawn), len(self.bars))
                     self.bars[i].ensure(pwr * 24)
                 # Display and update bars
-                for bar in self.bars:
+                for bar in sorted(self.bars, key=lambda bar: bar.size):
                     bar.render(sfx=sfx)
                     bar.update()
             elif Particle in (Bubble, Trail):
@@ -208,7 +211,7 @@ class Particles:
     def start(self):
         global TICK
         # Byte count, we are reading one 4 byte float per pixel of screen height
-        count = screensize[1] // 4 << 2
+        count = screensize[1] // 4 << 2 if pid != 1 else barcount << 2
         while True:
             # Read input amplitude array for current frame, render and animate it, then write output data back to main process
             arr = np.frombuffer(sys.stdin.buffer.read(count), dtype=np.float32)
@@ -238,13 +241,13 @@ class Particle(collections.abc.Hashable):
 # Bar particle class, simulates an exponentially decreasing bar with a gradient
 class Bar(Particle):
 
-    __slots__ = ("y", "colour", "size")
-    width = 4
+    __slots__ = ("y", "colour", "width", "height", "surf")
     line = Image.new("RGB", (1, width), 16777215)
 
-    def __init__(self, y, colour):
+    def __init__(self, x, colour):
         super().__init__()
-        self.y = y
+        self.y = round(screensize[1] / barcount * x)
+        self.width = min(screensize[1], round(screensize[1] / barcount * (x + 1))) - self.y
         self.colour = colour
         # Generate gradient of 2 pixels
         # if self.y & 4:
@@ -255,28 +258,25 @@ class Bar(Particle):
         # self.surf = surf.resize((2, self.width), resample=Image.NEAREST)
         # for i in range(self.width >> 2, self.width * 3 >> 2):
         #     self.surf.putpixel((1, i), tuple(x + 1 >> 1 for x in colour))
-        self.size = 0
+        self.surf = Image.new("RGB", (2, 1), self.colour)
+        self.surf.putpixel((0, 0), 0)
+        self.height = 0
 
     def update(self):
-        if self.size:
-            self.size = self.size * 0.97 - 1
-            if self.size < 0:
-                self.size = 0
+        if self.height:
+            self.height = self.height * 0.97 - 1
+            if self.height < 0:
+                self.height = 0
 
     def ensure(self, value):
-        if self.size < value:
-            self.size = value
+        if self.height < value:
+            self.height = value
 
     def render(self, sfx, **void):
-        size = round(self.size)
+        size = round(self.height)
         if size:
             # Resize gradient to form a bar, pasting onto the current frame
-            if self.y & 4:
-                surf = Image.new("RGB", (2, 1), tuple(x + 1 >> 1 for x in self.colour))
-            else:
-                surf = Image.new("RGB", (2, 1), self.colour)
-            surf.putpixel((0, 0), 0)
-            surf = surf.resize((size, self.width), resample=Image.BILINEAR)
+            surf = self.surf.resize((size, self.width), resample=Image.BILINEAR)
             sfx.paste(surf, (screensize[0] - size, self.y))
             pos = max(0, screensize[0] - size)
             sfx.paste(self.line, (pos, self.y))
