@@ -426,7 +426,7 @@ if __name__ == "__main__":
                     continue
                 else:
                     x = round((1 - log(x, maxfreq)) * freqmul * (screensize[1] - 1))
-                if x > screensize[1] - 1:
+                if x > screensize[1] - 1 or x < 0:
                     continue
                 self.fftrans[i] = x
             # Linearly scale amplitude data (unused)
