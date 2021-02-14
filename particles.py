@@ -273,7 +273,7 @@ class Bar(Particle):
         self.width = min(screensize[1], round(screensize[1] / barcount * (x + 1))) - self.y
         if dark:
             self.colour = tuple(i + 1 >> 1 for i in self.colour)
-            self.surf = Image.new("RGB", (4, 1), self.colour)
+            self.surf = Image.new("RGB", (3, 1), self.colour)
         else:
             self.surf = Image.new("RGB", (2, 1), self.colour)
         self.surf.putpixel((0, 0), 0)
