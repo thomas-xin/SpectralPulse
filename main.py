@@ -367,7 +367,7 @@ if __name__ == "__main__":
                 print(" ".join(args))
                 fut3 = exc.submit(psutil.Popen, args, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL)
             if not higher_bound:
-                higher_bound = "F#9"
+                higher_bound = "F#10"
             if str(higher_bound).isnumeric():
                 highest_note = int(higher_bound)
             else:
