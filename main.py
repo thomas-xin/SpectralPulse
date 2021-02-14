@@ -697,7 +697,7 @@ if __name__ == "__main__":
                 '"speed": 2, # Speed of screen movemement in pixels per frame, does not change audio playback speed.',
                 '"resolution": 192, # Resolution of DFT in bars per pixel, this should be a relatively high number due to the logarithmic scale.',
                 '"lower_bound": "A0", # Lowest musical note displayed on the spectrogram, may optionally be a frequency in Hz.',
-                '"higher_bound": "F#9", # Highest musical note displayed on the spectrogram, may optionally be a frequency in Hz.',
+                '"higher_bound": "F#10", # Highest musical note displayed on the spectrogram, may optionally be a frequency in Hz.',
                 '"particles": "piano", # May be one of None, "bar", "bubble", "piano", "hexagon", or a file path/URL in quotes to indicate image to use for particles.',
                 '"skip": true, # Whether to seek video to when audio begins playing.',
                 '"display": true, # Whether to preview the rendered video in a separate window.',
