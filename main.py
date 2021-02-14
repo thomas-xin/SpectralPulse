@@ -739,7 +739,7 @@ if __name__ == "__main__":
         if is_url(path):
             if ytdl is None:
                 with requests.head(path, stream=True) as resp:
-                    headers = {k.casefold(): v for k, v in requests.headers}
+                    headers = {k.casefold(): v for k, v in resp.headers}
                 mime = headers.get("content-type", "")
                 if mime.startswith("audio/") or mime.startswith("video/"):
                     if mime != "audio/midi":
