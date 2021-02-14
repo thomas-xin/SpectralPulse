@@ -255,22 +255,27 @@ class Bar(Particle):
 
     def __init__(self, x):
         super().__init__()
+        dark = False
         self.colour = tuple(round(i * 255) for i in colorsys.hsv_to_rgb(x / barcount, 1, 1))
         if particles == "bar":
             if x & 1:
-                self.colour = tuple(i + 1 >> 1 for i in self.colour)
+                dark = True
             self.line = Image.new("RGB", (1, self.width), 16777215)
         else:
             note = highest_note - x + 9
             if note % 12 in (1, 3, 6, 8, 10):
-                self.colour = tuple(i + 1 >> 1 for i in self.colour)
+                dark = True
             name = ("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")[note % 12]
             octave = note // 12
             self.line = name + str(octave)
             # print(self.line)
         self.y = round(screensize[1] / barcount * x)
         self.width = min(screensize[1], round(screensize[1] / barcount * (x + 1))) - self.y
-        self.surf = Image.new("RGB", (2, 1), self.colour)
+        if dark:
+            self.colour = tuple(i + 1 >> 1 for i in self.colour)
+            self.surf = Image.new("RGB", (4, 1), self.colour)
+        else:
+            self.surf = Image.new("RGB", (2, 1), self.colour)
         self.surf.putpixel((0, 0), 0)
         self.height = 0
 
