@@ -762,7 +762,7 @@ if __name__ == "__main__":
             fn = entry.name
         else:
             source = entry
-            fn = source.rsplit(".", 1)[0]
+            fn = source.rsplit("/", 1)[-1].rsplit(".", 1)[0]
         f2 = fn + ".pcm"
         f3 = fn + ".riff"
         f4 = fn + ".mp4"
