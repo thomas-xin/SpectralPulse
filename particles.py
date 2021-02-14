@@ -1,6 +1,6 @@
 from main import *
 import PIL, colorsys, io
-from PIL import ImageDraw, ImageMath, ImageOps, ImageChops
+from PIL import ImageDraw, ImageMath, ImageOps, ImageChops, ImageFont
 
 print = lambda *args, sep=" ", end="\n": sys.__stderr__.write(str(sep).join(str(i) for i in args) + str(end))
 
@@ -179,6 +179,8 @@ class Particles:
         if Particle:
             # Initialize next frame to be an empty black image
             sfx = Image.new("RGB", screensize, (0, 0, 0))
+            if particles == "piano":
+                globals()["DRAW"] = ImageDraw.Draw(sfx)
             if Particle == Bar:
                 # Raise bars to their current values as required
                 for i, pwr in enumerate(spawn):
@@ -187,6 +189,11 @@ class Particles:
                 # Display and update bars
                 for bar in self.bars:
                     bar.render(sfx=sfx)
+                highbars = sorted(self.bars, key=lambda bar: bar.height, reverse=True)[:32]
+                high = highbars[0]
+                for bar in reversed(highbars):
+                    bar.post_render(sfx=sfx, scale=bar.height / max(1, high.height))
+                for bar in self.bars:
                     bar.update()
             elif Particle in (Bubble, Trail):
                 # Calculate appropriate particle size and colour, create particle at corresponding pixel positions
@@ -244,33 +251,35 @@ class Bar(Particle):
 
     __slots__ = ("y", "colour", "width", "height", "surf", "line")
 
+    font = ImageFont.truetype("Pacifico.ttf", 12)
+
     def __init__(self, x):
         super().__init__()
         self.colour = tuple(round(i * 255) for i in colorsys.hsv_to_rgb(x / barcount, 1, 1))
         if particles == "bar":
             if x & 1:
                 self.colour = tuple(i + 1 >> 1 for i in self.colour)
-        elif (highest_note - x - 3) % 12 in (1, 3, 6, 8, 10):
-            self.colour = tuple(i + 1 >> 1 for i in self.colour)
+            self.line = Image.new("RGB", (1, self.width), 16777215)
+        else:
+            note = highest_note - x + 9
+            if note % 12 in (1, 3, 6, 8, 10):
+                self.colour = tuple(i + 1 >> 1 for i in self.colour)
+            name = ("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")[note % 12]
+            octave = note // 12
+            self.line = name + str(octave)
+            # print(self.line)
         self.y = round(screensize[1] / barcount * x)
         self.width = min(screensize[1], round(screensize[1] / barcount * (x + 1))) - self.y
-        self.line = Image.new("RGB", (1, self.width), 16777215)
-        # Generate gradient of 2 pixels
-        # if self.y & 4:
-        #     surf = Image.new("RGB", (2, 1), tuple(x + 1 >> 1 for x in colour))
-        # else:
-        #     surf = Image.new("RGB", (2, 1), colour)
-        # surf.putpixel((1, 0), 16777215)
-        # self.surf = surf.resize((2, self.width), resample=Image.NEAREST)
-        # for i in range(self.width >> 2, self.width * 3 >> 2):
-        #     self.surf.putpixel((1, i), tuple(x + 1 >> 1 for x in colour))
         self.surf = Image.new("RGB", (2, 1), self.colour)
         self.surf.putpixel((0, 0), 0)
         self.height = 0
 
     def update(self):
         if self.height:
-            self.height = self.height * 0.97 - 1
+            if type(self.line) is str:
+                self.height = self.height * 0.93 - 1
+            else:
+                self.height = self.height * 0.97 - 1
             if self.height < 0:
                 self.height = 0
 
@@ -284,8 +293,20 @@ class Bar(Particle):
             # Resize gradient to form a bar, pasting onto the current frame
             surf = self.surf.resize((size, self.width), resample=Image.BILINEAR)
             sfx.paste(surf, (screensize[0] - size, self.y))
-            pos = max(0, screensize[0] - size)
-            sfx.paste(self.line, (pos, self.y))
+            if type(self.line) is not str:
+                pos = max(0, screensize[0] - size)
+                sfx.paste(self.line, (pos, self.y))
+
+    def post_render(self, sfx, scale, **void):
+        size = round(self.height)
+        if size > 8:
+            if type(self.line) is str:
+                y = self.y + (self.width >> 1) - 12
+                width = DRAW.textlength(self.line, self.font)
+                pos = max(0, screensize[0] - size - width)
+                factor = round(255 * scale)
+                col = sum(factor << (i << 3) for i in range(3))
+                DRAW.text((pos, y), self.line, col, self.font)
 
 
 # Bubble particle class, simulates a growing and fading particle that floats in a random direction upon spawning

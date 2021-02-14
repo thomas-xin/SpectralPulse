@@ -371,7 +371,7 @@ if __name__ == "__main__":
             if str(higher_bound).isnumeric():
                 highest_note = int(higher_bound)
             else:
-                highest_note = "A~BC~D~EF~G".index(higher_bound[0].upper()) + ("#" in higher_bound)
+                highest_note = "C~D~EF~G~A~B".index(higher_bound[0].upper()) - 9 + ("#" in higher_bound)
                 while higher_bound[0] not in "0123456789-":
                     higher_bound = higher_bound[1:]
                     if not higher_bound:
@@ -382,7 +382,7 @@ if __name__ == "__main__":
             if str(lower_bound).isnumeric():
                 lowest_note = int(lower_bound)
             else:
-                lowest_note = "A~BC~D~EF~G".index(lower_bound[0].upper()) + ("#" in lower_bound)
+                lowest_note = "C~D~EF~G~A~B".index(lower_bound[0].upper()) - 9 + ("#" in lower_bound)
                 while lower_bound[0] not in "0123456789-":
                     lower_bound = lower_bound[1:]
                     if not lower_bound:
@@ -483,8 +483,8 @@ if __name__ == "__main__":
             size = np.prod(shape)
             while True:
                 img = bytes()
-                self.playing = False
                 while len(img) < size:
+                    self.playing = False
                     temp = self.part.stdout.read(size - len(img))
                     if not temp:
                         break
@@ -651,7 +651,8 @@ if __name__ == "__main__":
                             rem = (fs / sample_rate / 4 - t / fps) / (len(timestamps) / fps / 60)
                         # Display output as a progress bar on the console
                         out = f"\r{C.white}|{create_progress_bar(ratio, 64, ((-t * 16 / fps) % 6 / 6))}{C.white}| ({C.green}{time_disp(t / fps)}{C.white}/{C.red}{time_disp(fs / sample_rate / 4)}{C.white}) | Estimated time remaining: {C.magenta}[{time_disp(rem)}]"
-                        out += " " * (120 - len(nocol(out))) + C.white
+                        overflow = 120 - len(nocol(out))
+                        out = out[:len(out) + overflow] + " " * (overflow) + C.white
                         sys.stdout.write(out)
                         # Wait until the time for the next frame
                         while time.time_ns() < ts + billion / fps:
@@ -695,10 +696,10 @@ if __name__ == "__main__":
                 '"smudge_ratio": 0.9, # Redirects vertical blurriness horizontally; should be a value between 0 and 1.',
                 '"speed": 2, # Speed of screen movemement in pixels per frame, does not change audio playback speed.',
                 '"resolution": 192, # Resolution of DFT in bars per pixel, this should be a relatively high number due to the logarithmic scale.',
-                '"lower_bound": "A0" # Lowest musical note displayed on the spectrogram.',
-                '"higher_bound": "F#9" # Highest musical note displayed on the spectrogram.',
+                '"lower_bound": "A0", # Lowest musical note displayed on the spectrogram, may optionally be a frequency in Hz.',
+                '"higher_bound": "F#9", # Highest musical note displayed on the spectrogram, may optionally be a frequency in Hz.',
                 '"particles": "piano", # May be one of None, "bar", "bubble", "piano", "hexagon", or a file path/URL in quotes to indicate image to use for particles.',
-                '"skip": true, # Whether to seek video to when audio begins playing.'
+                '"skip": true, # Whether to seek video to when audio begins playing.',
                 '"display": true, # Whether to preview the rendered video in a separate window.',
                 '"render": true, # Whether to output the result to a video file.',
                 '"play": true, # Whether to play the actual audio being rendered.',
