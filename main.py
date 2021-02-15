@@ -759,7 +759,7 @@ if __name__ == "__main__":
         if type(entry) is not str:
             ytdl.extract_single(entry)
             source = entry.stream
-            fn = entry.name
+            fn = re.sub('[\\\\/*?:"<>|]', "-", entry.name)
         else:
             source = entry
             fn = source.rsplit("/", 1)[-1].rsplit(".", 1)[0]
