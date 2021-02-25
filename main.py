@@ -1,13 +1,47 @@
 #!/usr/bin/env python
 
+import os, sys
+
+if os.name == "nt":
+    vi = sys.version_info
+    python = ["py", f"-{vi[0]}.{vi[1]}"]
+else:
+    python = ["python3"]
+
+class Pillow_SIMD:
+    args = None
+    __bool__ = lambda self: bool(self.args)
+    get = lambda self: self.args or [python]
+
+    def check(self):
+        for v in range(8, 4, -1):
+            print(f"Attempting to find/install pillow-simd for Python 3.{v}...")
+            args = ["py", f"-3.{v}", "misc/install_pillow_simd.py"]
+            print(args)
+            resp = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            out = resp.stdout.decode("utf-8", "replace").strip()
+            if not out.startswith(f"Python 3.{v} not found!"):
+                print(out)
+                print(f"pillow-simd versioning successful for Python 3.{v}")
+                self.args = ["py", f"-3.{v}"]
+                return self.args
+        return [python]
+
+pillow_simd = Pillow_SIMD()
 
 if __name__ == "__main__":
-    from install_update import *
-else:
-    import os
+    if sys.version_info[1] in range(5, 9):
+        from install_pillow_simd import traceback, subprocess
+    else:
+        import subprocess
+        pillow_simd.check()
+        if pillow_simd:
+            subprocess.run(pillow_simd.get() + sys.argv)
+            sys.exit()
+        from install_update import traceback, subprocess
 if os.name == "nt":
     os.system("color")
-import numpy, time, psutil, sys, collections, random, contextlib, re, itertools, concurrent.futures
+import numpy, time, psutil, collections, random, contextlib, re, itertools, concurrent.futures
 suppress = contextlib.suppress
 from math import *
 from PIL import Image
@@ -114,7 +148,7 @@ def hsv_split(image, convert=True, partial=False, dtype=np.uint8):
 
     out = [H, S, V]
     if convert:
-        out = list(Image.fromarray(a, "L") for a in out)
+        out = list(fromarray(a, "L") for a in out)
     return out
 
 def hsl_split(image, convert=True, dtype=np.uint8):
@@ -133,7 +167,7 @@ def hsl_split(image, convert=True, dtype=np.uint8):
 
     out = [H, S, L]
     if convert:
-        out = list(Image.fromarray(a, "L") for a in out)
+        out = list(fromarray(a, "L") for a in out)
     return out
 
 def hsi_split(image, convert=True, dtype=np.uint8):
@@ -149,7 +183,7 @@ def hsi_split(image, convert=True, dtype=np.uint8):
 
     out = [H, S, I]
     if convert:
-        out = list(Image.fromarray(a, "L") for a in out)
+        out = list(fromarray(a, "L") for a in out)
     return out
 
 def rgb_merge(R, G, B, convert=True):
@@ -157,7 +191,7 @@ def rgb_merge(R, G, B, convert=True):
     outT = np.moveaxis(out, -1, 0)
     outT[:] = [np.clip(a, None, 255) for a in (R, G, B)]
     if convert:
-        out = Image.fromarray(out, "RGB")
+        out = fromarray(out, "RGB")
     return out
 
 def hsv_merge(H, S, V, convert=True):
@@ -230,6 +264,20 @@ def hsl_merge(H, S, L, convert=True, value=False, intensity=False):
 def hsi_merge(H, S, V, convert=True):
     return hsl_merge(H, S, V, convert, intensity=True)
 
+def fromarray(arr, mode="L"):
+    try:
+        return Image.fromarray(arr, mode=mode)
+    except TypeError:
+        try:
+            b = arr.tobytes()
+        except TypeError:
+            b = bytes(arr)
+        s = tuple(reversed(arr.shape))
+        try:
+            return Image.frombuffer(mode, s, b, "raw", mode, 0, 1)
+        except TypeError:
+            return Image.frombytes(mode, s, b)
+
 
 if __name__ == "__main__":
 
@@ -297,15 +345,16 @@ if __name__ == "__main__":
 
 
     # Default settings for the program
+    dest = None
     sample_rate = 48000
     fps = 30
     amplitude = 0.1
     smudge_ratio = 0.9
-    render = display = particles = play = 0
+    render = display = particles = play = image = 0
     higher_bound = lower_bound = None
     skip = 1
     speed = resolution = 1
-    screensize = size = (960, 540)
+    screensize = size = (1280, 720)
 
 
     # Main class that implements the program's functionality
@@ -336,7 +385,7 @@ if __name__ == "__main__":
                 fl = os.path.getsize(f3)
             except FileNotFoundError:
                 fl = 0
-            while fl < res_scale << 6:
+            while fl < res_scale:
                 if not proc.is_running():
                     err = proc.stderr.read().decode("utf-8", "replace")
                     if err:
@@ -352,10 +401,10 @@ if __name__ == "__main__":
             if render:
                 # Start ffmpeg process to convert output bitmap images and wav audio into a mp4 video
                 args = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-r", str(fps), "-f", "rawvideo", "-pix_fmt", "rgb24", "-video_size", "x".join(str(i) for i in screensize), "-i", "-"]
-                if play:
-                    args.extend(("-vn", "-f", "wav", "-i", f3, "-b:a", "256k"))
+                # if play:
+                args.extend(("-vn", "-f", "wav", "-i", f3, "-b:a", "256k"))
                 args.extend(("-c:v", "h264", "-b:v", "4M"))
-                if play and not skip:
+                if not skip:
                     d = round((screensize[0] - self.cutoff) / speed / fps * 1000)
                     args.extend(("-af", f"adelay=delays={d}:all=1"))
                 args.append(f4)
@@ -363,7 +412,7 @@ if __name__ == "__main__":
                 fut2 = exc.submit(psutil.Popen, args, stdin=subprocess.PIPE)
             if display:
                 # Start python process running display.py to display the preview
-                args = [("python3", "python")[os.name == "nt"], "display.py", *[str(x) for x in screensize]]
+                args = python + ["display.py", *[str(x) for x in screensize]]
                 print(" ".join(args))
                 fut3 = exc.submit(psutil.Popen, args, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL)
             if not higher_bound:
@@ -395,7 +444,7 @@ if __name__ == "__main__":
             print(maxfreq, minfreq, freqmul)
             if particles:
                 # Start python process running particles.py to render the particles using amplitude sample data
-                args = [("python3", "python")[os.name == "nt"], "particles.py", str(particles), str(self.cutoff), str(screensize[1]), str(barcount), str(highest_note)]
+                args = python + ["particles.py", str(particles), str(self.cutoff), str(screensize[1]), str(barcount), str(highest_note)]
                 print(" ".join(args))
                 fut4 = exc.submit(psutil.Popen, args, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
             if play:
@@ -432,7 +481,7 @@ if __name__ == "__main__":
             # Linearly scale amplitude data (unused)
             self.linear_scale = np.arange(screensize[1], dtype=np.float64) / screensize[1]
             # Initialize hue of output image to a vertical rainbow
-            self.hue = Image.fromarray(np.expand_dims((self.linear_scale * 256).astype(np.uint8), 0), mode="L")
+            self.hue = fromarray(np.expand_dims((self.linear_scale * 256).astype(np.uint8), 0))
             # Initialize saturation of output image to be maximum
             self.sat = Image.new("L", (screensize[1], 1), 255)
             # Initialize value of output image to be maximum
@@ -447,7 +496,7 @@ if __name__ == "__main__":
                 fl = os.path.getsize(f2)
             except FileNotFoundError:
                 fl = 0
-            while fl < res_scale << 6:
+            while fl < res_scale:
                 if not proc.is_running():
                     err = proc.stderr.read().decode("utf-8", "replace")
                     if err:
@@ -564,11 +613,11 @@ if __name__ == "__main__":
                             compat[:len(temp)] += temp
                 self.part.fut = exc.submit(self.part.stdin.write, compat.tobytes())
             # Convert saturation and brightness arrays into 2D arrays of length 1, to prepare them for image conversion
-            imgsat = Image.fromarray(np.expand_dims(sat, 0), mode="L")
-            imgval = Image.fromarray(np.expand_dims(val, 0), mode="L")
-            self.sat = imgsat
-            self.val = imgval
+            self.sat = fromarray(np.expand_dims(sat, 0))
+            self.val = fromarray(np.expand_dims(val, 0))
             # Merge arrays into a single HSV image, converting to RGB and extracting as a 1D array
+            if Image.__version__ == "7.0.0.post3":
+                return np.uint8(Image.merge("HSV", (self.hue, self.sat, self.val)).convert("RGB"))[0]
             return hsv_merge(self.hue, self.sat, self.val, convert=False)[0]
             # return np.uint8(Image.merge("HSV", (self.hue, self.sat, self.val)).convert("RGB"))[0]
 
@@ -581,6 +630,8 @@ if __name__ == "__main__":
                 # Current time in nanoseconds, timestamps to wait for every frame as well as estimate remaining render time
                 ts = time.time_ns()
                 timestamps = deque()
+                if image:
+                    yvals = deque()
                 for i in range(2147483648):
                     # Force the first frame to calculate immediately if not yet set
                     if self.fut is None:
@@ -615,6 +666,8 @@ if __name__ == "__main__":
                     elif skip:
                         for x in range(speed):
                             self.trans[self.cutoff + i * speed + x] = line
+                    if image:
+                        yvals.append(line)
                     # Ensure that all subprocesses are functioning correctly
                     for p in ("render", "display", "particles"):
                         if globals().get(p):
@@ -653,11 +706,18 @@ if __name__ == "__main__":
                         out = f"\r{C.white}|{create_progress_bar(ratio, 64, ((-t * 16 / fps) % 6 / 6))}{C.white}| ({C.green}{time_disp(t / fps)}{C.white}/{C.red}{time_disp(fs / sample_rate / 4)}{C.white}) | Estimated time remaining: {C.magenta}[{time_disp(rem)}]"
                         overflow = 120 - len(nocol(out))
                         out = out[:len(out) + overflow] + " " * (overflow) + C.white
-                        sys.stdout.write(out)
-                        # Wait until the time for the next frame
-                        while time.time_ns() < ts + billion / fps:
-                            time.sleep(0.001)
+                        sys.stdout.buffer.write(out.encode("utf-8"))
+                        if play:
+                            # Wait until the time for the next frame
+                            while time.time_ns() < ts + billion / fps:
+                                time.sleep(0.001)
                         ts = max(ts + billion / fps, time.time_ns() - billion / fps)
+            if image:
+                dim = list(itertools.chain(*(itertools.repeat(y, speed) for y in yvals)))
+                img = np.array(dim, dtype=np.uint8)
+                img = np.swapaxes(img, 0, 1)
+                img = fromarray(img, mode="RGB")
+                img.save(f5)
             # Close everything and exit
             self.file.close()
             if render:
@@ -689,7 +749,8 @@ if __name__ == "__main__":
     if not os.path.exists("config.json"):
         data = "{" + "\n\t" + "\n\t".join((
                 '"source": "", # This field may be omitted to be prompted for an input at runtime; may be a file path or URL.',
-                '"size": [960, 540], # Both dimensions should be divisible by 4 for best results.',
+                '"dest": "", # This field may be omitted to use the source filename.'
+                '"size": [1280, 720], # Both dimensions should be divisible by 4 for best results.',
                 '"fps": 30, # Framerate of the output video.',
                 '"sample_rate": 48000, # Sample rate to evaluate fourier transforms at, should be a multiple of fps.',
                 '"amplitude": 0.1, # Amplitude to scale audio volume, adjust as necessary.',
@@ -703,6 +764,7 @@ if __name__ == "__main__":
                 '"display": true, # Whether to preview the rendered video in a separate window.',
                 '"render": true, # Whether to output the result to a video file.',
                 '"play": true, # Whether to play the actual audio being rendered.',
+                '"image": false, # Whether to render entire spectrogram as an image.',
             )) + "\n}"
         with open("config.json", "w") as f:
             f.write(data)
@@ -738,6 +800,20 @@ if __name__ == "__main__":
     for path in inputs:
         if is_url(path):
             if ytdl is None:
+                if re.findall("^https?:\\/\\/(?:[a-z]+\\.)?discord(?:app)?\\.com\\/", path):
+                    title = path.split("?", 1)[0].rsplit("/", 1)[-1]
+                    if title.rsplit(".", 1)[-1] in ("ogg", "webm"):
+                        url2 = path.replace("/cdn.discordapp.com/", "/media.discordapp.net/")
+                        with requests.get(url2, stream=True) as resp:
+                            if resp.status_code in range(200, 400):
+                                futs.append(url2)
+                                continue
+                            headers = {k.casefold(): v for k, v in resp.headers.items()}
+                        mime = headers.get("content-type", "")
+                        if mime.startswith("audio/") or mime.startswith("video/"):
+                            if mime != "audio/midi":
+                                futs.append(path)
+                                continue
                 with requests.head(path, stream=True) as resp:
                     headers = {k.casefold(): v for k, v in resp.headers.items()}
                 mime = headers.get("content-type", "")
@@ -755,6 +831,8 @@ if __name__ == "__main__":
             sources.extend(fut.result())
         else:
             sources.append(fut)
+    if dest:
+        sources = (sources[0],)
     for entry in sources:
         if type(entry) is not str:
             ytdl.extract_single(entry)
@@ -763,10 +841,14 @@ if __name__ == "__main__":
         else:
             source = entry
             fn = source.rsplit("/", 1)[-1].rsplit(".", 1)[0]
+        if dest:
+            fn = dest
         f2 = fn + ".pcm"
         f3 = fn + ".riff"
         f4 = fn + ".mp4"
+        f5 = fn + ".png"
         print("Loading", source)
+        print(skip, display, render, play)
         r = Render(source)
         if render:
             print("Rendering", f4)

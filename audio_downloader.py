@@ -525,10 +525,12 @@ def _get_duration(filename, _timeout=12):
     except:
         with suppress():
             proc.kill()
+        with suppress():
+            resp = proc.stdout.read().split()
         print_exc()
     try:
         dur = float(resp[0])
-    except (IndexError, ValueError):
+    except (IndexError, ValueError, TypeError):
         dur = None
     bps = None
     if len(resp) > 1:
@@ -557,7 +559,7 @@ def get_duration(filename):
             ident = str(magic.from_buffer(data))
             print(head, ident, sep="\n")
             try:
-                bitrate = regexp("[0-9]+\\s.bps").findall(ident)[0].casefold()
+                bitrate = regexp("[0-9.]+\\s.?bps").findall(ident)[0].casefold()
             except IndexError:
                 return _get_duration(filename, 16)[0]
             bps, key = bitrate.split(None, 1)
@@ -959,6 +961,11 @@ class AudioDownloader:
                     url = resp["id"]
         if is_discord_url(url):
             title = url.split("?", 1)[0].rsplit("/", 1)[-1]
+            if title.rsplit(".", 1)[-1] in ("ogg", "webm", "mp4", "avi", "mov"):
+                url2 = url.replace("/cdn.discordapp.com/", "/media.discordapp.net/")
+                with requests.get(url2, stream=True) as resp:
+                    if resp.status_code in range(200, 400):
+                        url = url2
             if "." in title:
                 title = title[:title.rindex(".")]
             return dict(url=url, name=title, direct=True)
@@ -996,6 +1003,11 @@ class AudioDownloader:
     def extract_from(self, url):
         if is_discord_url(url):
             title = url.split("?", 1)[0].rsplit("/", 1)[-1]
+            if title.rsplit(".", 1)[-1] in ("ogg", "webm", "mp4", "avi", "mov"):
+                url2 = url.replace("/cdn.discordapp.com/", "/media.discordapp.net/")
+                with requests.get(url2, stream=True) as resp:
+                    if resp.status_code in range(200, 400):
+                        url = url2
             if "." in title:
                 title = title[:title.rindex(".")]
             return dict(url=url, webpage_url=url, title=title, direct=True)
@@ -1273,7 +1285,7 @@ class AudioDownloader:
         out = None
         url = f"https://www.youtube.com/results?search_query={verify_url(query)}"
         self.youtube_x += 1
-        resp = Request(url, timeout=12)
+        resp = requests.get(url, timeout=12).content
         result = None
         with suppress(ValueError):
             s = resp[resp.index(b"// scraper_data_begin") + 21:resp.rindex(b"// scraper_data_end")]
@@ -1286,8 +1298,8 @@ class AudioDownloader:
             result = self.parse_yt(s)
         if result is not None:
             q = to_alphanumeric(full_prune(query))
-            high = alist()
-            low = alist()
+            high = []
+            low = []
             for entry in result:
                 if entry.duration:
                     name = full_prune(entry.name)
@@ -1315,9 +1327,9 @@ class AudioDownloader:
                 entries = list(resp["entries"])
             else:
                 entries = [resp]
-            out = alist()
+            out = []
             for entry in entries:
-                with tracebacksuppressor:
+                try:
                     found = True
                     if "title" in entry:
                         title = entry["title"]
@@ -1339,6 +1351,8 @@ class AudioDownloader:
                             temp["url"] = f"https://www.youtube.com/watch?v={url}"
                     temp["research"] = True
                     out.append(temp)
+                except:
+                    print_exc()
         return out
     # Performs a search, storing and using cached search results for efficiency.
     def search(self, item, force=False, mode=None, count=1):
