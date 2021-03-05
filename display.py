@@ -26,13 +26,13 @@ class Display:
             if not image:
                 break
             fut = exc.submit(sys.stdin.buffer.read, self.length)
-            surf = pygame.image.fromstring(image, screensize, "RGB")
+            surf = pygame.image.fromstring(image, screensize, "RGB").convert()
             self.disp.blit(surf, (0, 0))
             pygame.display.update()
             # Allows the "X" icon on the top right corner of the window to be used to close the program
             for event in pygame.event.get():
                 if event.type == QUIT:
-                    break
+                    raise SystemExit
             pygame.event.clear()
 
 

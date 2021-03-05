@@ -73,8 +73,10 @@ class cdict(dict):
     __call__ = lambda self, k: self.__getitem__(k)
 
     def __getattr__(self, k):
-        with suppress(AttributeError):
+        try:
             return self.__getattribute__(k)
+        except AttributeError:
+            pass
         if not k.startswith("__") or not k.endswith("__"):
             try:
                 return self.__getitem__(k)
