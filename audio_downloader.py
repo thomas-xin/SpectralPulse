@@ -511,7 +511,7 @@ def _get_duration(filename, _timeout=12):
         "-select_streams",
         "a:0",
         "-show_entries",
-        "stream=duration,bit_rate",
+        "format=duration,bit_rate",
         "-of",
         "default=nokey=1:noprint_wrappers=1",
         filename,
